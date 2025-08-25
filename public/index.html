@@ -682,49 +682,79 @@
       $('#info-used-coins').textContent = used;
     }
 
-// ======= ВКЛАДКА УЧАСТНИКА =======
+<!-- ===== Вкладка участника ===== -->
+<div id="voter-panel" style="display:none">
+
+  <!-- Форма входа -->
+  <div id="voter-join">
+    <h2>Присоединиться к опросу</h2>
+    <input id="v-poll-id" placeholder="ID опроса" />
+    <input id="v-code" placeholder="Ваш код" />
+    <button id="btn-join">Присоединиться</button>
+    <div id="join-msg" style="margin-top:10px; color:#555"></div>
+  </div>
+
+  <!-- Информация об опросе -->
+  <div id="voter-info" style="display:none; margin-top:20px">
+    <h3 id="v-poll-title">Опрос</h3>
+    <div>
+      <span>Статус: <b id="v-status-pill"></b></span><br/>
+      <span>Бюджет монет: <b id="v-budget">0</b></span><br/>
+      Остаток: <b id="v-remaining">0</b>
+      <div style="background:#eee; height:10px; width:100%; border-radius:5px; margin-top:5px">
+        <div id="v-progress-bar" style="background:#3b82f6; height:10px; width:0%; border-radius:5px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Форма распределения -->
+  <form id="voter-form" style="display:none; margin-top:20px">
+    <div id="alloc-list"></div>
+    <button id="btn-submit" type="button">Отправить голос</button>
+    <div id="submit-msg" style="margin-top:10px; color:green"></div>
+  </form>
+</div>
+
+<script>
+// ====== JS для вкладки участника ======
 let vState = { code: null, pollId: null, budget: 0, allocations: {} };
 
-function joinByCode(code){
-  code = (code||'').trim().toUpperCase();
-  $('#v-code').value = code;
+// ====== Присоединение по ID + коду ======
+function joinPollAsVoter() {
+  const pollId = $('#v-poll-id').value.trim();
+  const code   = ($('#v-code').value || '').trim().toUpperCase();
 
-  const q = new URLSearchParams(location.search);
-  const pollId = q.get('poll'); // Берём pollId из URL
-
-if (!pollId) {
-  showPanel('voter'); // открываем вкладку
-  $('#join-msg').textContent = 'Не указан ID опроса.';
-  return;
-}
-
-// Загружаем опрос по ID
-loadPollFromGun(pollId, (success) => {
-  if (!success) {
-    $('#join-msg').textContent = 'Опрос не найден.';
+  if (!pollId || !code) {
+    $('#join-msg').textContent = 'Введите ID опроса и код участника.';
     return;
   }
-  setupVoterInterface(code);
-});
+
+  loadPollFromGun(pollId, (success) => {
+    if (!success) {
+      $('#join-msg').textContent = 'Опрос не найден.';
+      return;
+    }
+    setupVoterInterface(code);
+  });
 }
 
-// === Функция для настройки интерфейса участника ===
+// === Настройка интерфейса участника ===
 function setupVoterInterface(code){
-  if(!current.poll || !current.poll.voters) return;
+  if (!current.poll || !current.poll.voters) return;
 
   const voter = current.poll.voters.find(v => (v.code || '').toUpperCase() === code);
-  if(!voter){
+  if (!voter){
     $('#join-msg').textContent='Код не найден. Проверьте правильность или обратитесь к организатору.';
     return;
   }
 
-  // Настраиваем состояние участника
+  // Сохраняем состояние
   vState.code = code; 
   vState.pollId = current.poll.id; 
   vState.budget = Number(voter.coins)||0;
   vState.allocations = Object.assign({}, current.poll.votes[code]||{});
 
-  // Отображаем элементы страницы
+  // Показываем интерфейс
   $('#voter-info').style.display='block';
   $('#voter-form').style.display='block';
   $('#v-poll-title').textContent = current.poll.title || 'Опрос';
@@ -734,8 +764,8 @@ function setupVoterInterface(code){
   renderAllocationForm();
   updateRemaining();
 
-  // Сообщение участнику
-  if(current.poll.status === 'closed') {
+  // Сообщение пользователю
+  if (current.poll.status === 'closed') {
     $('#join-msg').textContent = 'Опрос завершен. Отправка новых голосов недоступна.';
   } else {
     $('#join-msg').textContent = voter.submitted
@@ -743,122 +773,125 @@ function setupVoterInterface(code){
       : 'Готово: можно голосовать.';
   }
 
-  // Навешиваем обработчики на кнопки и вкладки
   attachVoterFormHandlers();
-
-  // Подписываемся на обновления опроса
   subscribeToPollUpdates(current.poll.id);
 }
 
-// === Функция для навешивания обработчиков на кнопки и вкладки ===
+// === Навешиваем обработчики ===
 function attachVoterFormHandlers() {
-  // Кнопки внутри формы
-  const buttons = document.querySelectorAll('#voter-form button');
-  buttons.forEach(btn => {
-    btn.onclick = (e) => {
-      e.preventDefault();
-      handleVoteButtonClick(btn.dataset.option);
-    };
-  });
+  $('#btn-submit').onclick = (e) => {
+    e.preventDefault();
+    submitVote();
+  };
+}
 
-  // Вкладки опроса
-  const tabs = document.querySelectorAll('.poll-tab');
-  tabs.forEach(tab => {
-    tab.onclick = () => switchTab(tab.dataset.tab);
+// === Обновление интерфейса при изменении опроса ===
+function updateVoterInterface() {
+  if (!current.poll || !vState.code) return;
+  const voter = current.poll.voters.find(v=> (v.code||'').toUpperCase()===vState.code);
+  if (!voter) return;
+
+  $('#v-poll-title').textContent = current.poll.title || 'Опрос';
+  $('#v-status-pill').textContent = current.poll.status;
+  vState.budget = Number(voter.coins) || 0;
+  $('#v-budget').textContent = vState.budget;
+
+  vState.allocations = Object.assign({}, current.poll.votes[vState.code]||{});
+  renderAllocationForm();
+  updateRemaining();
+
+  if (current.poll.status === 'closed') {
+    $('#submit-msg').textContent = 'Опрос завершен. Редактирование голоса недоступно.';
+    $('#btn-submit').disabled = true;
+  } else {
+    $('#btn-submit').disabled = false;
+  }
+}
+
+// === Рендер формы распределения ===
+function renderAllocationForm(){
+  const wrap = $('#alloc-list');
+  wrap.innerHTML = '';
+  (current.poll?.options||[]).forEach(o => {
+    const value = Number(vState.allocations[o.id]||0);
+    const row = document.createElement('div'); row.className='item';
+    row.innerHTML = `
+      <div style="flex:1 1 auto; min-width:200px">
+        <div style="font-weight:600">${o.label||'—'}</div>
+        <div class="muted">Раздайте монеты этому варианту</div>
+      </div>
+      <input type="number" min="0" step="1" value="${value}" style="width:120px" data-id="${o.id}" />
+    `;
+    wrap.appendChild(row);
+  });
+  wrap.querySelectorAll('input[type="number"]').forEach(inp => {
+    inp.addEventListener('input', ()=>{
+      const id = inp.dataset.id;
+      const n = Math.max(0, parseInt(inp.value||'0'));
+      vState.allocations[id] = n;
+      constrainAllocations();
+      updateRemaining();
+    });
   });
 }
 
-    function updateVoterInterface() {
-      if (!current.poll || !vState.code) return;
-      
-      const voter = current.poll.voters.find(v=> (v.code||'').toUpperCase()===vState.code);
-      if (!voter) return;
-      
-      $('#v-poll-title').textContent = current.poll.title || 'Опрос';
-      $('#v-status-pill').textContent = current.poll.status;
- vState.budget = Number(voter.coins) || 0;
-$('#v-budget').textContent = vState.budget;
+// === Подсчёт суммы монет ===
+function sumAlloc(){ return Object.values(vState.allocations).reduce((a,b)=>a+(Number(b)||0),0); }
 
-      
-      // Обновляем allocations из текущего состояния опроса
-      vState.allocations = Object.assign({}, current.poll.votes[vState.code]||{});
-      
-      renderAllocationForm();
-      updateRemaining();
-      
-      if (current.poll.status === 'closed') {
-        $('#submit-msg').textContent = 'Опрос завершен. Редактирование голоса недоступно.';
-        $('#btn-submit').disabled = true;
-      } else {
-        $('#btn-submit').disabled = false;
-      }
-    }
+function constrainAllocations(){
+  const total = sumAlloc();
+  if(total <= vState.budget) return;
+  const over = total - vState.budget;
+  const active = document.activeElement?.dataset?.id;
+  if(active){
+    vState.allocations[active] = Math.max(0, (Number(vState.allocations[active])||0) - over);
+    const input = document.querySelector(`input[data-id="${active}"]`);
+    if(input) input.value = vState.allocations[active];
+  }
+}
 
-    function renderAllocationForm(){
-      const wrap = $('#alloc-list');
-      wrap.innerHTML = '';
-      (current.poll?.options||[]).forEach(o => {
-        const value = Number(vState.allocations[o.id]||0);
-        const row = document.createElement('div'); row.className='item';
-        row.innerHTML = `
-          <div style="flex:1 1 auto; min-width:200px">
-            <div style="font-weight:600">${o.label||'—'}</div>
-            <div class="muted">Раздайте монеты этому варианту</div>
-          </div>
-          <input type="number" min="0" step="1" value="${value}" style="width:120px" data-id="${o.id}" />
-        `;
-        wrap.appendChild(row);
-      });
-      wrap.querySelectorAll('input[type="number"]').forEach(inp => {
-        inp.addEventListener('input', ()=>{
-          const id = inp.dataset.id;
-          const n = Math.max(0, parseInt(inp.value||'0'));
-          vState.allocations[id] = n;
-          constrainAllocations();
-          updateRemaining();
-        })
-      })
-    }
+// === Обновляем остаток ===
+function updateRemaining(){
+  const used = sumAlloc();
+  const remaining = Math.max(0, vState.budget - used);
+  $('#v-remaining').textContent = remaining;
+  const pct = vState.budget ? Math.min(100, Math.round(100*used / vState.budget)) : 0;
+  $('#v-progress-bar').style.width = pct + '%';
+}
 
-    function sumAlloc(){ return Object.values(vState.allocations).reduce((a,b)=>a+(Number(b)||0),0); }
+// === Отправляем голос ===
+function submitVote(){
+  if(!current.poll || !vState.code) return;
+  if(current.poll.status==='closed'){ 
+    $('#submit-msg').textContent = 'Опрос завершен.'; 
+    return; 
+  }
 
-    function constrainAllocations(){
-      const total = sumAlloc();
-      if(total <= vState.budget) return; // ок
-      // если превысили бюджет — уменьшим последнюю правку
-      const over = total - vState.budget;
-      // Найдём активный элемент
-      const active = document.activeElement?.dataset?.id;
-      if(active){
-        vState.allocations[active] = Math.max(0, (Number(vState.allocations[active])||0) - over);
-        const input = document.querySelector(`input[data-id="${active}"]`);
-        if(input) input.value = vState.allocations[active];
-      }
-    }
+  const clean = {};
+  Object.entries(vState.allocations).forEach(([k,v])=>{
+    const n=Number(v)||0; 
+    if(n>0) clean[k]=n; 
+  });
 
-    function updateRemaining(){
-      const used = sumAlloc();
-      const remaining = Math.max(0, vState.budget - used);
-      $('#v-remaining').textContent = remaining;
-      const pct = vState.budget ? Math.min(100, Math.round(100*used / vState.budget)) : 0;
-      $('#v-progress-bar').style.width = pct + '%';
-    }
+  current.poll.votes[vState.code] = clean;
+  const voter = current.poll.voters.find(v=> (v.code||'').toUpperCase()===vState.code);
+  if(voter) voter.submitted = true;
 
-    function submitVote(){
-      if(!current.poll || !vState.code) return;
-      if(current.poll.status==='closed'){ $('#submit-msg').textContent = 'Опрос завершен.'; return; }
-      // фильтруем нули
-      const clean = {};
-      Object.entries(vState.allocations).forEach(([k,v])=>{ const n=Number(v)||0; if(n>0) clean[k]=n; });
-      current.poll.votes[vState.code] = clean;
-      const voter = current.poll.voters.find(v=> (v.code||'').toUpperCase()===vState.code);
-      if(voter) voter.submitted = true;
-      
-      current.poll.updatedAt = Date.now();
-      savePollToGun();
-      
-      $('#submit-msg').textContent = 'Голос сохранен. Вы можете отредактировать его до завершения опроса.';
-    }
+  current.poll.updatedAt = Date.now();
+  savePollToGun();
+
+  $('#submit-msg').textContent = 'Голос сохранен. Вы можете отредактировать его до завершения опроса.';
+}
+
+// === Утилита для querySelector ===
+function $(sel){ return document.querySelector(sel); }
+
+// === Навешиваем обработчик на кнопку входа ===
+document.addEventListener('DOMContentLoaded', () => {
+  $('#btn-join').onclick = joinPollAsVoter;
+});
+</script>
+
 
     // ======= ЭКРАН РЕЗУЛЬТАТОВ =======
     function drawScreen(){
