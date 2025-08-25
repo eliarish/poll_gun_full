@@ -692,21 +692,20 @@ function joinByCode(code){
   const q = new URLSearchParams(location.search);
   const pollId = q.get('poll'); // Берём pollId из URL
 
-  if (!pollId) {
-    $('#join-msg').textContent = 'Не указан ID опроса.';
+if (!pollId) {
+  showPanel('voter'); // открываем вкладку
+  $('#join-msg').textContent = 'Не указан ID опроса.';
+  return;
+}
+
+// Загружаем опрос по ID
+loadPollFromGun(pollId, (success) => {
+  if (!success) {
+    $('#join-msg').textContent = 'Опрос не найден.';
     return;
   }
-
-  // Загружаем опрос по ID
-  loadPollFromGun(pollId, (success) => {
-    if (!success) {
-      $('#join-msg').textContent = 'Опрос не найден.';
-      return;
-    }
-
-    // Настраиваем интерфейс участника
-    setupVoterInterface(code);
-  });
+  setupVoterInterface(code);
+});
 }
 
 // === Функция для настройки интерфейса участника ===
@@ -1070,27 +1069,42 @@ $('#v-budget').textContent = vState.budget;
       const code = q.get('code');
       
       if (pollId) {
-        loadPollFromGun(pollId, (success) => {
-          if (success) {
-            subscribeToPollUpdates(pollId);
-            if (view === 'voter') {
-              showPanel('voter');
-              if (code) joinByCode(code);
-            } else if (view === 'screen') {
-              showPanel('screen');
-              drawScreen();
-            } else {
-              showPanel('organizer');
-            }
-          } else {
-            alert('Опрос не найден');
-            newPoll();
-          }
-        });
-      } else {
-        newPoll();
-      }
+  loadPollFromGun(pollId, (success) => {
+    if (success) {
+      subscribeToPollUpdates(pollId);
+    } else {
+      console.warn(`Не удалось загрузить опрос с id: ${pollId}`);
     }
+  });
+} else {
+  console.warn('pollId отсутствует, загрузка опроса невозможна');
+}
+
+
+// DOMContentLoaded должен быть **вне** блока if
+document.addEventListener('DOMContentLoaded', () => {
+  initFromQuery();
+});
+
+      // Определяем вид панели
+      if (view === 'voter') {
+        showPanel('voter');
+
+        // Вызов функции только после полной загрузки опроса
+        if (code) {
+          setupVoterInterface(code); // вместо joinByCode, чтобы не вызывать loadPoll заново
+        }
+      } else if (view === 'screen') {
+        showPanel('screen');
+        drawScreen();
+      } else {
+        showPanel('organizer');
+      }
+    } else {
+  showPanel('voter'); // открыть вкладку участника
+  $('#join-msg').textContent = 'Опрос не найден или недоступен.';
+}
+
 
     // ======= СТАРТ =======
     document.addEventListener('DOMContentLoaded', () => {
