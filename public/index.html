@@ -689,31 +689,48 @@
       code = (code||'').trim().toUpperCase();
       $('#v-code').value = code;
       
-      // Ищем опрос с этим кодом участника
-      gun.get('polls').map().once((poll) => {
-        if (poll && poll.voters) {
-          const voter = poll.voters.find(v => (v.code || '').toUpperCase() === code);
-          if (voter) {
-            current.poll = poll;
-            refreshInfo();
-            
-            if(poll.status==='closed'){ 
-              $('#join-msg').textContent = 'Опрос завершен. Отправка новых голосов недоступна.'; 
-            }
+ const q = new URLSearchParams(location.search);
+  const pollId = q.get('poll'); // Берём pollId из URL
 
-            vState.code = code; 
-            vState.pollId = poll.id; 
-            vState.budget = Number(voter.coins)||0;
-            vState.allocations = Object.assign({}, poll.votes[code]||{});
-            
-            $('#voter-info').style.display='block';
-            $('#voter-form').style.display='block';
-            $('#v-poll-title').textContent = poll.title || 'Опрос';
-            $('#v-status-pill').textContent = poll.status;
-            $('#v-budget').textContent = vState.budget;
-            
-            renderAllocationForm();
-            updateRemaining();
+  if (!pollId) {
+    $('#join-msg').textContent = 'Не указан ID опроса.';
+    return;
+  }
+
+  // Загружаем опрос по ID
+  loadPollFromGun(pollId, (success) => {
+    if (!success) {
+      $('#join-msg').textContent = 'Опрос не найден.';
+      return;
+    }
+
+    // Ищем участника по коду
+    const voter = current.poll.voters.find(v => (v.code || '').toUpperCase() === code);
+    if (!voter) {
+      $('#join-msg').textContent = 'Код не найден. Проверьте правильность или обратитесь к организатору.';
+      return;
+    }
+
+    // Настраиваем состояние участника
+    vState.code = code;
+    vState.pollId = current.poll.id;
+    vState.budget = Number(voter.coins) || 0;
+    vState.allocations = Object.assign({}, current.poll.votes[code] || {});
+
+    refreshInfo();
+
+    if (current.poll.status === 'closed') {
+      $('#join-msg').textContent = 'Опрос завершен. Отправка новых голосов недоступна.';
+    }
+
+    $('#voter-info').style.display = 'block';
+    $('#voter-form').style.display = 'block';
+    $('#v-poll-title').textContent = current.poll.title || 'Опрос';
+    $('#v-status-pill').textContent = current.poll.status;
+    $('#v-budget').textContent = vState.budget;
+
+    renderAllocationForm();
+    updateRemaining();
             
             $('#join-msg').textContent = voter.submitted ? 
               'Вы уже голосовали. Можно обновить голос до завершения опроса.' : 
