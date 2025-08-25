@@ -682,14 +682,14 @@
       $('#info-used-coins').textContent = used;
     }
 
-    // ======= ВКЛАДКА УЧАСТНИКА =======
-    let vState = { code: null, pollId: null, budget: 0, allocations: {} };
+// ======= ВКЛАДКА УЧАСТНИКА =======
+let vState = { code: null, pollId: null, budget: 0, allocations: {} };
 
-    function joinByCode(code){
-      code = (code||'').trim().toUpperCase();
-      $('#v-code').value = code;
-      
- const q = new URLSearchParams(location.search);
+function joinByCode(code){
+  code = (code||'').trim().toUpperCase();
+  $('#v-code').value = code;
+
+  const q = new URLSearchParams(location.search);
   const pollId = q.get('poll'); // Берём pollId из URL
 
   if (!pollId) {
@@ -704,51 +704,70 @@
       return;
     }
 
-    // Ищем участника по коду
-    const voter = current.poll.voters.find(v => (v.code || '').toUpperCase() === code);
-    if (!voter) {
-      $('#join-msg').textContent = 'Код не найден. Проверьте правильность или обратитесь к организатору.';
-      return;
-    }
+    // Настраиваем интерфейс участника
+    setupVoterInterface(code);
+  });
+}
 
-    // Настраиваем состояние участника
-    vState.code = code;
-    vState.pollId = current.poll.id;
-    vState.budget = Number(voter.coins) || 0;
-    vState.allocations = Object.assign({}, current.poll.votes[code] || {});
+// === Функция для настройки интерфейса участника ===
+function setupVoterInterface(code){
+  if(!current.poll || !current.poll.voters) return;
 
-    refreshInfo();
+  const voter = current.poll.voters.find(v => (v.code || '').toUpperCase() === code);
+  if(!voter){
+    $('#join-msg').textContent='Код не найден. Проверьте правильность или обратитесь к организатору.';
+    return;
+  }
 
-    if (current.poll.status === 'closed') {
-      $('#join-msg').textContent = 'Опрос завершен. Отправка новых голосов недоступна.';
-    }
+  // Настраиваем состояние участника
+  vState.code = code; 
+  vState.pollId = current.poll.id; 
+  vState.budget = Number(voter.coins)||0;
+  vState.allocations = Object.assign({}, current.poll.votes[code]||{});
 
-    $('#voter-info').style.display = 'block';
-    $('#voter-form').style.display = 'block';
-    $('#v-poll-title').textContent = current.poll.title || 'Опрос';
-    $('#v-status-pill').textContent = current.poll.status;
-    $('#v-budget').textContent = vState.budget;
+  // Отображаем элементы страницы
+  $('#voter-info').style.display='block';
+  $('#voter-form').style.display='block';
+  $('#v-poll-title').textContent = current.poll.title || 'Опрос';
+  $('#v-status-pill').textContent = current.poll.status;
+  $('#v-budget').textContent = vState.budget;
 
-    renderAllocationForm();
-    updateRemaining();
-            
-            $('#join-msg').textContent = voter.submitted ? 
-              'Вы уже голосовали. Можно обновить голос до завершения опроса.' : 
-              'Готово: можно голосовать.';
-              
-            // Подписываемся на обновления этого опроса
-            subscribeToPollUpdates(poll.id);
-            return;
-          }
-        }
-      });
-      
-      setTimeout(() => {
-        if (!vState.code) {
-          $('#join-msg').textContent = 'Код не найден. Проверьте правильность или обратитесь к организатору.';
-        }
-      }, 1000);
-    }
+  renderAllocationForm();
+  updateRemaining();
+
+  // Сообщение участнику
+  if(current.poll.status === 'closed') {
+    $('#join-msg').textContent = 'Опрос завершен. Отправка новых голосов недоступна.';
+  } else {
+    $('#join-msg').textContent = voter.submitted
+      ? 'Вы уже голосовали. Можно обновить голос до завершения опроса.'
+      : 'Готово: можно голосовать.';
+  }
+
+  // Навешиваем обработчики на кнопки и вкладки
+  attachVoterFormHandlers();
+
+  // Подписываемся на обновления опроса
+  subscribeToPollUpdates(current.poll.id);
+}
+
+// === Функция для навешивания обработчиков на кнопки и вкладки ===
+function attachVoterFormHandlers() {
+  // Кнопки внутри формы
+  const buttons = document.querySelectorAll('#voter-form button');
+  buttons.forEach(btn => {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      handleVoteButtonClick(btn.dataset.option);
+    };
+  });
+
+  // Вкладки опроса
+  const tabs = document.querySelectorAll('.poll-tab');
+  tabs.forEach(tab => {
+    tab.onclick = () => switchTab(tab.dataset.tab);
+  });
+}
 
     function updateVoterInterface() {
       if (!current.poll || !vState.code) return;
@@ -758,8 +777,9 @@
       
       $('#v-poll-title').textContent = current.poll.title || 'Опрос';
       $('#v-status-pill').textContent = current.poll.status;
-      $('#v-budget').textContent = voter.coins || 0;
-      vState.budget = Number(voter.coins)||0;
+ vState.budget = Number(voter.coins) || 0;
+$('#v-budget').textContent = vState.budget;
+
       
       // Обновляем allocations из текущего состояния опроса
       vState.allocations = Object.assign({}, current.poll.votes[vState.code]||{});
@@ -1073,9 +1093,89 @@
     }
 
     // ======= СТАРТ =======
-    (function start(){
-      initFromQuery();
-    })();
+    document.addEventListener('DOMContentLoaded', () => {
+  // Инициализация из URL-параметров
+  initFromQuery();
+
+  // Вкладки
+  $('#tab-organizer').addEventListener('click', ()=>showPanel('organizer'));
+  $('#tab-voter').addEventListener('click', ()=>showPanel('voter'));
+  $('#tab-screen').addEventListener('click', ()=>showPanel('screen'));
+
+  // Основные кнопки
+  $('#btn-new').addEventListener('click', ()=>{ 
+    if(confirm('Создать новый опрос? Текущий сохранится в хранилище.')) newPoll(); 
+  });
+  $('#btn-join').addEventListener('click', ()=> joinByCode($('#v-code').value));
+  $('#btn-submit').addEventListener('click', submitVote);
+  $('#btn-start').addEventListener('click', ()=>{ 
+    if((current.poll.options||[]).length===0){ alert('Добавьте хотя бы один вариант.'); return; } 
+    current.poll.status='open'; current.poll.updatedAt=Date.now(); savePollToGun(); refreshInfo(); 
+    alert('Опрос запущен. Участники могут голосовать.'); 
+  });
+  $('#btn-close').addEventListener('click', ()=>{ 
+    current.poll.status='closed'; current.poll.updatedAt=Date.now(); savePollToGun(); refreshInfo(); 
+    alert('Опрос завершен.'); 
+  });
+  $('#btn-refresh').addEventListener('click', drawAll);
+  $('#btn-fullscreen').addEventListener('click', ()=>$('#card-results').requestFullscreen?.());
+  $('#btn-even').addEventListener('click', ()=>{ 
+    const opts = current.poll?.options||[]; if(opts.length===0) return; 
+    const even = Math.floor(vState.budget/opts.length); 
+    const remainder = vState.budget - even*opts.length; 
+    vState.allocations={}; 
+    opts.forEach((o,i)=>vState.allocations[o.id]=even+(i<remainder?1:0)); 
+    renderAllocationForm(); 
+    updateRemaining(); 
+  });
+  $('#btn-clear').addEventListener('click', ()=>{ 
+    vState.allocations={}; renderAllocationForm(); updateRemaining(); 
+  });
+  $('#btn-open-screen').addEventListener('click', ()=>{ 
+    window.open(location.origin+location.pathname+'?view=screen&poll='+current.poll.id,'_blank'); 
+  });
+
+  // Экспорт/импорт
+  $('#btn-export').addEventListener('click', ()=>{ 
+    const blob = new Blob([JSON.stringify(current.poll,null,2)], {type:'application/json'}); 
+    const a = document.createElement('a'); 
+    a.href = URL.createObjectURL(blob); 
+    a.download = `poll-${current.poll.id}.json`; 
+    a.click(); 
+  });
+  $('#btn-import').addEventListener('click', ()=>$('#file-import').click());
+  $('#file-import').addEventListener('change', (e)=>{
+    const file = e.target.files[0]; if(!file) return; 
+    const reader = new FileReader(); 
+    reader.onload = ()=>{ 
+      try{
+        const obj = JSON.parse(reader.result); 
+        if(!obj.id) obj.id=uid(); 
+        current.poll=obj; 
+        current.poll.updatedAt=Date.now(); 
+        savePollToGun(); 
+        renderOptions(); 
+        renderVoters(); 
+        refreshInfo(); 
+        drawAll(); 
+      } catch(err){ alert('Ошибка импорта: '+err.message); } 
+    }; 
+    reader.readAsText(file); 
+  });
+
+  // Копирование ссылок
+  $$('.copy').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const sel = btn.dataset.copy; 
+      const inp = document.querySelector(sel); 
+      if(!inp) return; 
+      inp.select(); inp.setSelectionRange(0,99999); 
+      navigator.clipboard.writeText(inp.value); 
+      btn.textContent='✓'; 
+      setTimeout(()=>btn.textContent='Копировать',1000); 
+    });
+  });
+});
   </script>
 </body>
 </html>
